@@ -9,7 +9,7 @@
 ;   add-on -> helper: {"id":N,"cmd":"read"} | {"id":N,"cmd":"write","text":"<ini>"}
 ;   helper -> add-on: {"id":N,"ok":true,...} | {"cmd":"open","url":"..."} | {"cmd":"options"} | {"cmd":"focusnew"}
 
-ID := "ahkreceiver@local"
+ID := "ahkreceiver@ccc000i.addon"
 NAME := "Firefox AHK Receiver"
 REGKEY := "HKCU\Software\Mozilla\NativeMessagingHosts\ahk_receiver"
 DEFAULT_INI := "background = #000`r`nactive_font = #E0E0E0`r`ncleared_font = #555`r`noptions_key = !o`r`nlist = `"`r`n(`r`n)`""
