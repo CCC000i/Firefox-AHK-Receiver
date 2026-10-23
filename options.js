@@ -246,7 +246,7 @@ function togglePanel(btn, box) {
   const open = box.hidden;
   box.hidden = !open;
   btn.setAttribute("aria-expanded", open);
-  btn.querySelector("span").innerHTML = open ? "▴" : "▸";
+  btn.querySelector("span").textContent = open ? "▴" : "▸";
 }
 settingsBtn.addEventListener("click", () => togglePanel(settingsBtn, settingsBox));
 extrasBtn.addEventListener("click", () => togglePanel(extrasBtn, extrasBox));
