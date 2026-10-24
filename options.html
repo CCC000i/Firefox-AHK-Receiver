@@ -2,7 +2,7 @@
 <meta charset="utf-8">
 <title>AHK Receiver</title>
 <style>
-  :root { color-scheme: dark; --bg: #000; --fg: #E0E0E0; --dim: #555; --line: color-mix(in srgb, var(--dim) 45%, transparent); }
+  :root { color-scheme: dark; --bg: #000; --fg: #E0E0E0; --dim: #555; --line: color-mix(in srgb, var(--dim) 45%, transparent); --accent-hover: #60a5fa; }
   [hidden] { display: none !important; }
   * { box-sizing: border-box; }
   body { font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; max-width: 1200px; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
@@ -35,7 +35,7 @@
   td input, td button { height: 18px; line-height: normal; }
   th:nth-child(1), td:nth-child(1) { width: 24px; }
   th:nth-child(2), td:nth-child(2) { width: 83px; }
-  th:nth-child(4), td:nth-child(4) { width: 170px; }
+  th:nth-child(3), td:nth-child(3) { width: 60%; } /* URL is a fixed share; Shortcut gets the rest (~170px at full width) and absorbs most of the shrinking */
   td:not(:last-child) { padding-right: 1px; }
   tr.empty { color: var(--dim); }
   .url, .key { width: 100%; }
@@ -47,11 +47,12 @@
   #add { font-size: 10px; vertical-align: top; width: 22px; height: 18px; padding: 0; align-self: flex-start; }
   #msg { margin: 1px 0; min-height: 1.4em; font-family: monospace; color: darkred; }
   #hintBtn { padding: 0 10px; }
-  #hint { display: none; position: absolute; bottom: 0; right: 0; z-index: 10; width: max-content; max-width: 100%; padding: 0 8px; text-align: left; background: var(--bg); border: 1px solid var(--line); color: var(--fg); font-size: 10px; line-height: 1.3; font-style: italic; }
+  #hint { display: none; position: absolute; bottom: 0; right: 0; z-index: 10; width: max-content; max-width: 100%; padding: 8px 12px; text-align: left; background: color-mix(in srgb, var(--bg) 67%, transparent); border: 1px solid var(--line); color: var(--fg); font-size: 11px; line-height: 1.4; }
   #bottom:has(#hintBtn:hover) #hint, #hint:hover { display: block; }
   button:disabled, input:disabled { opacity: .3; cursor: default; }
   button:disabled:hover { background: transparent; color: inherit; border-color: var(--line); }
   button, input, select, textarea, .card, .badge, img { border-radius: 2px; }
+  .monoText { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: bold; color: var(--accent-hover); }
 </style>
 <div id="main">
   <table>
@@ -88,7 +89,7 @@
         <input type="file" id="file" accept=".json" hidden>
       </div>
     </div>
-    <div id="hint">- Requires installing the AHK companion process<br>- AutoHotkey v2 Syntax: ^=Ctrl, !=Alt, +=Shift, #=Win<br>- Examples: !b, ^+k, #F8, !Backspace<br>- Press Enter inside a position number box to jump<br>- Edits update the .ini live<br>- Shortcuts only fire while a Firefox-based browser is focused</div>
+    <div id="hint">- <b>v2 Hotkey Syntax</b>: <span class="monoText">^=Ctrl, !=Alt, +=Shift, #=Win</span><br>- <b>Conditions:</b> <span class="monoText">gks</span>: (key that must be held), <span class="monoText">gf</span>: (global AHK flag)<br>- <b>Conditions syntax:</b> <span class="monoText">@</span> starts conditions, use <span class="monoText">&amp;</span> for "and" or <span class="monoText">|</span> for "or" inside conditions, <span class="monoText">_</span> starts an alternative hotkey<br>- <b>Example shortcut:</b> <span class="monoText">!b _ b @ gks:c &amp; gks:v | gf:AllowB</span><br>-- <b>Plain text explanation:</b> "(Trigger with <b>alt+b</b>), or (trigger with <b>c+v+b</b>, or trigger with <b>b only when global AHK flag AllowB</b> is active)"<br><br><i>- Requires installing the updated AHK companion process<br>- Shortcuts only fire while a Firefox-based browser is focused<br>- Press Enter inside a position number box to reorder quickly<br>- Edits update the .ini live</i></div>
   </div>
 </div>
 <template id="row"><tr><td><button class="rm" title="Remove shortcut">&minus;</button></td><td class="ctl"><input class="pos" type="number" min="1" title="Position (Enter to jump)"><button class="up" title="Move up">&#9650;</button><button class="dn" title="Move down">&#9660;</button></td><td><input class="url" placeholder="example.com" spellcheck="false"></td><td><input class="key" placeholder="!x" spellcheck="false"></td></tr></template>

@@ -15,7 +15,8 @@ REGKEY := "HKCU\Software\Mozilla\NativeMessagingHosts\ahk_receiver"
 DEFAULT_INI := "background = #000`r`nactive_font = #E0E0E0`r`ncleared_font = #555`r`noptions_key = !o`r`nlist = `"`r`n(`r`n)`""
 ini := A_ScriptDir "\" NAME ".ini"
 ownerPid := 0, ownerExe := "", ownerArgs := "", hIn := 0, hOut := 0
-last := Chr(1), active := Map()   ; Chr(1): never equals real file text
+last := Chr(1), active := []   ; Chr(1): never equals real file text
+ctx := Map(), flags := Map()   ; HotIf callbacks per condition string, mapped flag views per name
 
 if IsHostLaunch()
     StartHost()
@@ -177,35 +178,133 @@ Watch() {
     Apply(txt)
 }
 
+; List line: "<field><TAB><url>" (legacy "hotkey:url" / "hotkey|conds|url" also read).
+; Field: "hotkey [@ cond [& cond] [| cond & cond]] [_ hotkey ...]"; spaces around @ & | _ are optional; \@ \& \| \_ are literal.
 Apply(txt) {
-    optKey := "", binds := Map(), inList := false
+    optKey := "", items := [], inList := false
     for line in StrSplit(txt, "`n", "`r") {
         t := Trim(line)
         if inList {
             if SubStr(t, 1, 1) = ")"
                 inList := false
+            else if (p := InStr(t, "`t")) {
+                if (u := Trim(SubStr(t, p + 1))) != ""
+                    AddField(items, Trim(SubStr(t, 1, p - 1)), u)
+            } else if RegExMatch(t, "^([^:|]+)\|([^|]*)\|(.+)$", &m)
+                AddField(items, Trim(m[1]) (Trim(m[2]) != "" ? " @ " RegExReplace(Trim(m[2]), "\s*,\s*", " & ") : ""), m[3])
             else if RegExMatch(t, "^(.+?):(.+)$", &m)
-                binds[m[1]] := m[2]
+                AddField(items, m[1], m[2])
         } else if RegExMatch(t, "i)^options_key\s*=\s*(.+)$", &o)
             optKey := o[1]
         else if RegExMatch(t, "i)^list\s*=")
             inList := true
     }
-    HotIf(FocusCheck)
-    for k in active
-        try Hotkey(k, "Off")
-    active.Clear()
-    for k, u in binds
-        try {
-            Hotkey(k, oURL.Bind(u), "On")
-            active[k] := 1
+    for a in active {
+        HotIf(a.fn)
+        try Hotkey(a.k, "Off")
+    }
+    active.Length := 0
+    ; conditional binds first: for the same key, the first matching context wins
+    for pass in [1, 2]
+        for it in items {
+            if (it.c != "") != (pass = 1)
+                continue
+            fn := GetCtx(it.c)
+            HotIf(fn)
+            try {
+                Hotkey(it.k, oURL.Bind(it.u), "On")
+                active.Push({k: it.k, fn: fn})
+            }
         }
     if optKey != ""
         try {
+            HotIf(FocusCheck)
             Hotkey(optKey, oOptions, "On")
-            active[optKey] := 1
+            active.Push({k: optKey, fn: FocusCheck})
         }
     HotIf()
+}
+
+AddField(items, field, u) {
+    for e in SplitRe(RegExReplace(field, "\s+", " "), "\s*(?<!\\)_+\s*") {
+        if e = ""
+            continue
+        if RegExMatch(e, "^(.+?)\s*(?<!\\)@\s*(.+)$", &m)
+            items.Push({k: Unesc(Trim(m[1])), c: Trim(m[2]), u: u})
+        else
+            items.Push({k: Unesc(e), c: "", u: u})
+    }
+}
+
+Unesc(s) => RegExReplace(s, "\\([@&|_])", "$1")
+
+SplitRe(s, re) {
+    r := [], pos := 1
+    while RegExMatch(s, re, &m, pos) {
+        r.Push(Trim(SubStr(s, pos, m.Pos - pos)))
+        pos := m.Pos + m.Len
+    }
+    r.Push(Trim(SubStr(s, pos)))
+    return r
+}
+
+GetCtx(c) {
+    if c = ""
+        return FocusCheck
+    if !ctx.Has(c) {
+        alts := ParseConds(c)
+        ctx[c] := (*) => FocusCheck() && CondsOk(alts)
+    }
+    return ctx[c]
+}
+
+; "a & b | c & d" -> [[a, b], [c, d]] (OR of ANDs)
+ParseConds(s) {
+    alts := []
+    for alt in SplitRe(s, "\s*(?<!\\)\|\s*") {
+        terms := []
+        for p in SplitRe(alt, "\s*(?<!\\)&\s*") {
+            if RegExMatch(p, "^(\w+):(\S+)$", &m)
+                terms.Push({t: StrLower(m[1]), v: Unesc(m[2])})
+            else
+                terms.Push({t: "", v: ""})   ; malformed: never true
+        }
+        alts.Push(terms)
+    }
+    return alts
+}
+
+CondsOk(alts) {
+    for terms in alts {
+        hit := true
+        for c in terms {
+            ok := false
+            try ok := c.t = "gks" ? GetKeyState(c.v) : c.t = "gf" ? FlagSet(c.v) : false
+            if !ok {
+                hit := false
+                break
+            }
+        }
+        if hit
+            return true
+    }
+    return false
+}
+
+; Reads a 4-byte int from a named shared memory mapping ("Global\" is prepended unless the name has a "\")
+FlagSet(name) {
+    if !flags.Has(name) {
+        h := DllCall("OpenFileMappingW", "UInt", 4, "Int", 0, "Str", InStr(name, "\") ? name : "Global\" name, "Ptr")
+        if !h
+            return false
+        p := DllCall("MapViewOfFile", "Ptr", h, "UInt", 4, "UInt", 0, "UInt", 0, "UPtr", 4, "Ptr")
+        if !p {
+            DllCall("CloseHandle", "Ptr", h)
+            return false
+        }
+        flags[name] := p
+    }
+    return NumGet(flags[name], 0, "Int") != 0
 }
 
 oURL(url, *) {

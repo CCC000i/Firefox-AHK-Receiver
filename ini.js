@@ -5,7 +5,8 @@
 //   options_key = <ahk hotkey>
 //   list = "
 //   (
-//   <ahk hotkey>:<url>
+//   <shortcut field><TAB><url>
+//   (legacy lines "<hotkey>:<url>" and "<hotkey>|<conditions>|<url>" are read and converted)
 //   )"
 // Mirrors how Firefox AHK Receiver.ahk reads it, but strict, so odd files are reported, not rewritten.
 // Only "list" is required; missing optional keys fall back to defaults.
@@ -36,9 +37,14 @@ function parseIni(text) {
         const l = lines[j].trim();
         if (l.startsWith(")")) { closed = true; break; }
         if (!l) continue;
-        const e = /^(.+?):(.+)$/.exec(l);
-        if (!e) throw new Error(`Line ${j + 1}: expected "shortcut:url", found "${l}".`);
-        rows.push({ k: e[1].trim(), u: e[2].trim() });
+        let e = /^(.+?)\t+(.+)$/.exec(l);
+        if (e) rows.push({ k: e[1].trim(), u: e[2].trim() });
+        else if ((e = /^([^:|]+)\|([^|]*)\|(.+)$/.exec(l))) {
+          const c = e[2].split(",").map(x => x.trim()).filter(Boolean).join(" & ");
+          rows.push({ k: c ? `${e[1].trim()} @ ${c}` : e[1].trim(), u: e[3].trim() });
+        }
+        else if ((e = /^(.+?):(.+)$/.exec(l))) rows.push({ k: e[1].trim(), u: e[2].trim() });
+        else throw new Error(`Line ${j + 1}: expected "shortcut<TAB>url", found "${l}".`);
       }
       if (!closed) throw new Error('The list is not closed with ")".');
       i = j;
@@ -52,7 +58,7 @@ function parseIni(text) {
 
 // Only complete rows (shortcut and URL) are written.
 function serializeIni(s, optionsKey, rows) {
-  const body = rows.filter(r => r.k && r.u).map(r => `${r.k}:${r.u}`);
+  const body = rows.filter(r => r.k && r.u).map(r => `${r.k}\t${r.u}`);
   return [
     `background = ${s.bg}`,
     `active_font = ${s.active}`,

@@ -9,7 +9,7 @@ const settingsBox = $("settings"), settingsBtn = $("settingsBtn");
 const extrasBox = $("extras"), extrasBtn = $("extrasBtn");
 const hexInputs = [...settingsBox.querySelectorAll("input[data-key]")];
 
-let model = [];                       // { k: AHK shortcut, u: url }, incl. blank just-added rows (not written)
+let model = [];                       // { k: shortcut field, u: url }, incl. blank just-added rows (not written)
 let optionsKey = "";
 let settings = { ...DEFAULTS };
 let loaded = false;                   // true only after a valid ini was loaded; nothing is written otherwise
@@ -118,14 +118,39 @@ const go = (item, to, sel) => run(async () => {
   await persist();
 });
 
-// Shortcut text is AHK syntax and is stored as typed. Only the ini format's own limits are checked.
-function checkKey(v, item) {
-  const fail = (t) => { msg.textContent = t; return null; };
-  if (v.includes(":")) return fail("A shortcut can't contain \":\" (the ini uses it as the separator). Use +; for a colon.");
-  const dup = model.findIndex(r => r !== item && r.k.toLowerCase() === v.toLowerCase());
-  if (dup >= 0) return fail(`${v} is already used by row ${dup + 1}.`);
-  if (optionsKey && v.toLowerCase() === optionsKey.toLowerCase()) return fail(`${v} is already used by the Options shortcut.`);
-  return v;
+// Shortcut field: "hotkey [@ cond [& cond] [| cond & cond]] [_ hotkey ...]". Hotkey text is AHK syntax, stored as typed.
+// Spaces around @ & | _ are optional; write \\@ \\& \\| \\_ for a literal character.
+const SEP = /\s*(?<!\\)_+\s*/, AT = /^(.+?)\s*(?<!\\)@\s*(.+)$/, OR = /\s*(?<!\\)\|\s*/, AND = /\s*(?<!\\)&\s*/;
+const unesc = (s) => s.replace(/\\([@&|_])/g, "$1");
+
+// -> { text: whitespace-collapsed field, entries: [{ hk, cond, id }] }; strict throws Error on bad syntax
+function parseField(s, strict = true) {
+  const text = String(s || "").replace(/\s+/g, " ").trim();
+  const entries = [];
+  for (const raw of text.split(SEP).map(x => x.trim()).filter(Boolean)) {
+    const m = AT.exec(raw);
+    const hk = unesc(m ? m[1].trim() : raw), cond = m ? m[2].trim() : "";
+    if (strict && m) {
+      for (const alt of cond.split(OR)) for (const t of alt.split(AND))
+        if (!/^(gks|gf):\S+$/i.test(t.trim())) throw new Error(`Invalid condition "${t.trim()}". Use gks:Key or gf:FlagName, joined with & / |.`);
+    }
+    entries.push({ hk, cond, id: `${hk}\0${cond}`.toLowerCase() });
+  }
+  return { text, entries };
+}
+
+// Validates a field for `item`; returns the normalized text or throws Error(message)
+function checkField(v, item) {
+  const { text, entries } = parseField(v);
+  const seen = new Set();
+  for (const e of entries) {
+    if (seen.has(e.id)) throw new Error(`"${e.hk}" with the same conditions appears twice in this field.`);
+    seen.add(e.id);
+    const dup = model.findIndex(r => r !== item && parseField(r.k, false).entries.some(x => x.id === e.id));
+    if (dup >= 0) throw new Error(`${e.hk} with the same conditions is already used by row ${dup + 1}.`);
+    if (optionsKey && e.hk.toLowerCase() === optionsKey.toLowerCase()) throw new Error(`${e.hk} is already used by the Options shortcut.`);
+  }
+  return text;
 }
 
 rows.addEventListener("input", (e) => refresh(e.target.closest("tr")));
@@ -136,11 +161,12 @@ rows.addEventListener("change", (e) => {
   if (el.classList.contains("url")) run(() => { item.u = el.value.trim(); return persist(); });
   else if (el.classList.contains("key")) run(async () => {
     msg.textContent = "";
-    const v = el.value.trim();
-    const k = v ? checkKey(v, item) : "";
-    el.value = k ?? item.k;
+    let k;
+    try { k = checkField(el.value, item); }
+    catch (err) { msg.textContent = err.message; el.value = item.k; refresh(tr); return; }
+    el.value = k;
     refresh(tr);
-    if (k === null || k === item.k) return;
+    if (k === item.k) return;
     item.k = k;
     await persist();
   });
@@ -184,7 +210,7 @@ $("refreshBtn").addEventListener("click", () => run(loadIni));
 optionsKeyInput.addEventListener("change", () => run(async () => {
   msg.textContent = "";
   const v = optionsKeyInput.value.trim();
-  const dup = v ? model.findIndex(r => r.k.toLowerCase() === v.toLowerCase()) : -1;
+  const dup = v ? model.findIndex(r => parseField(r.k, false).entries.some(x => x.hk.toLowerCase() === v.toLowerCase())) : -1;
   if (dup >= 0) {
     msg.textContent = `${v} is already used by row ${dup + 1}.`;
     optionsKeyInput.value = optionsKey;
@@ -271,17 +297,23 @@ $("file").addEventListener("change", (e) => {
     try {
       const d = JSON.parse(await file.text());
       const raw = Array.isArray(d.rows) ? d.rows : [];
-      const next = raw.map(r => ({ k: String(r?.k || "").trim(), u: String(r?.u || "").trim() })).filter(r => r.k || r.u);
-      const skipped = next.filter(r => r.k.includes(":")).length;
-      model = next.filter(r => !r.k.includes(":"));
+      // old backups kept conditions in r.c ("gks:F15, gf:X"); fold them into the shortcut field
+      const next = raw.map(r => {
+        const c = String(r?.c || "").split(",").map(x => x.trim()).filter(Boolean).join(" & ");
+        const k = String(r?.k || "").trim();
+        return { k: c && k ? `${k} @ ${c}` : k, u: String(r?.u || "").trim() };
+      }).filter(r => r.k || r.u);
+      const ok = (r) => { try { r.k = parseField(r.k).text; return true; } catch { return false; } };
+      const skipped = next.filter(r => !ok(r)).length;
+      model = next.filter(ok);
       if (typeof d.optionsKey === "string") {
         const k = d.optionsKey.trim();
-        if (!k || !model.some(r => r.k.toLowerCase() === k.toLowerCase())) { optionsKey = k; optionsKeyInput.value = k; }
+        if (!k || !model.some(r => parseField(r.k, false).entries.some(x => x.hk.toLowerCase() === k.toLowerCase()))) { optionsKey = k; optionsKeyInput.value = k; }
       }
       if (d.settings) applySettings(mergeSettings(d.settings, settings));
       build();
       await persist();
-      if (skipped) msg.textContent = `${skipped} shortcut(s) in the backup contained ":" and were skipped.`;
+      if (skipped) msg.textContent = `${skipped} shortcut(s) in the backup had invalid shortcut/condition syntax and were skipped.`;
     } catch (err) {
       msg.textContent = `Import failed: ${err.message}`;
     }
