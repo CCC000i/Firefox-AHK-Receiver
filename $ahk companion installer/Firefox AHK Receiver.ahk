@@ -16,6 +16,7 @@ DEFAULT_INI := "background = #000`r`nactive_font = #E0E0E0`r`ncleared_font = #55
 ini := A_ScriptDir "\" NAME ".ini"
 ownerPid := 0, ownerExe := "", ownerArgs := "", hIn := 0, hOut := 0
 last := Chr(1), active := []   ; Chr(1): never equals real file text
+codeFiles := Map()   ; code row text -> temp script path
 ctx := Map(), flags := Map()   ; HotIf callbacks per condition string, mapped flag views per name
 
 if IsHostLaunch()
@@ -95,6 +96,7 @@ StartHost() {
     if !info
         ExitApp
     ownerPid := info.ProcessId
+    OnExit(CleanCode)
     ownerExe := info.ExecutablePath
     cmd := ""
     try cmd := info.CommandLine
@@ -212,7 +214,7 @@ Apply(txt) {
             fn := GetCtx(it.c)
             HotIf(fn)
             try {
-                Hotkey(it.k, oURL.Bind(it.u), "On")
+                Hotkey(it.k, (IsCode(it.u) ? oCode : oURL).Bind(it.u), "On")
                 active.Push({k: it.k, fn: fn})
             }
         }
@@ -317,6 +319,27 @@ oURL(url, *) {
         return
     }
     WriteMessage('{"cmd":"open","url":"' JsonEscape(url) '"}')
+}
+
+IsCode(u) => SubStr(u, 1, 1) = "{" && SubStr(u, -1) = "}"
+
+; Code row "{code}": | = line break, \| = literal pipe. Runs as a separate AHK v2 script (written once per distinct code).
+oCode(u, *) {
+    if !codeFiles.Has(u) {
+        code := StrReplace(SubStr(u, 2, -1), "\|", Chr(1))
+        code := StrReplace(StrReplace(code, "|", "`n"), Chr(1), "|")
+        path := A_Temp "\" NAME "-" ownerPid "-" (codeFiles.Count + 1) ".ahk"
+        try WriteFile(path, "#Requires AutoHotkey v2.0`n#SingleInstance Off`n#NoTrayIcon`n" code "`n", "UTF-8")
+        catch
+            return
+        codeFiles[u] := path
+    }
+    try Run((A_IsCompiled ? '"' A_ScriptFullPath '" /script' : '"' A_AhkPath '"') ' "' codeFiles[u] '"')
+}
+
+CleanCode(*) {
+    try FileDelete(A_Temp "\" NAME "-" ownerPid "-*.ahk")
+    return 0
 }
 
 oOptions(*) => WriteMessage('{"cmd":"options"}')

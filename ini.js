@@ -5,12 +5,13 @@
 //   options_key = <ahk hotkey>
 //   list = "
 //   (
-//   <shortcut field><TAB><url>
+//   <shortcut field><TAB><url, or {ahk code} with | as line break>
 //   (legacy lines "<hotkey>:<url>" and "<hotkey>|<conditions>|<url>" are read and converted)
 //   )"
 // Mirrors how Firefox AHK Receiver.ahk reads it, but strict, so odd files are reported, not rewritten.
 // Only "list" is required; missing optional keys fall back to defaults.
 
+const mkRow = (k, u) => /^\{.*\}$/.test(u) ? { k, u: u.slice(1, -1).trim(), t: "code" } : { k, u, t: "url" };
 const SCALARS = { background: "bg", active_font: "active", cleared_font: "cleared", options_key: "optionsKey" };
 
 // -> { bg?, active?, cleared?, optionsKey?, rows: [{ k, u }] }; throws Error(message) if the file is not a valid ini
@@ -38,12 +39,12 @@ function parseIni(text) {
         if (l.startsWith(")")) { closed = true; break; }
         if (!l) continue;
         let e = /^(.+?)\t+(.+)$/.exec(l);
-        if (e) rows.push({ k: e[1].trim(), u: e[2].trim() });
+        if (e) rows.push(mkRow(e[1].trim(), e[2].trim()));
         else if ((e = /^([^:|]+)\|([^|]*)\|(.+)$/.exec(l))) {
           const c = e[2].split(",").map(x => x.trim()).filter(Boolean).join(" & ");
-          rows.push({ k: c ? `${e[1].trim()} @ ${c}` : e[1].trim(), u: e[3].trim() });
+          rows.push(mkRow(c ? `${e[1].trim()} @ ${c}` : e[1].trim(), e[3].trim()));
         }
-        else if ((e = /^(.+?):(.+)$/.exec(l))) rows.push({ k: e[1].trim(), u: e[2].trim() });
+        else if ((e = /^(.+?):(.+)$/.exec(l))) rows.push(mkRow(e[1].trim(), e[2].trim()));
         else throw new Error(`Line ${j + 1}: expected "shortcut<TAB>url", found "${l}".`);
       }
       if (!closed) throw new Error('The list is not closed with ")".');
@@ -58,7 +59,7 @@ function parseIni(text) {
 
 // Only complete rows (shortcut and URL) are written.
 function serializeIni(s, optionsKey, rows) {
-  const body = rows.filter(r => r.k && r.u).map(r => `${r.k}\t${r.u}`);
+  const body = rows.filter(r => r.k && r.u).map(r => `${r.k}\t${r.t === "code" ? `{${r.u}}` : r.u}`);
   return [
     `background = ${s.bg}`,
     `active_font = ${s.active}`,

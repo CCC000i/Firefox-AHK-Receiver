@@ -1,4 +1,5 @@
 const DEFAULTS = { bg: "#000", active: "#E0E0E0", cleared: "#555" };
+const CODE_PH = 'Send("^c")|Sleep(50)|Send("^v")';
 const CSS_VARS = { bg: "--bg", active: "--fg", cleared: "--dim" };
 const $ = (id) => document.getElementById(id);
 const rows = $("rows"), msg = $("msg"), optionsKeyInput = $("optionsKey");
@@ -94,6 +95,8 @@ function build() {
     const f = (c) => tr.querySelector("." + c);
     f("url").value = r.u;
     f("key").value = r.k;
+    f("type").value = r.t;
+    f("url").placeholder = r.t === "code" ? CODE_PH : "example.com";
     f("pos").value = i + 1;
     f("pos").max = model.length;
     refresh(tr);
@@ -158,7 +161,12 @@ rows.addEventListener("input", (e) => refresh(e.target.closest("tr")));
 rows.addEventListener("change", (e) => {
   const el = e.target, tr = el.closest("tr"), item = model[+tr.dataset.i];
   if (!item) return;
-  if (el.classList.contains("url")) run(() => { item.u = el.value.trim(); return persist(); });
+  if (el.classList.contains("type")) run(() => {
+    item.t = el.value;
+    tr.querySelector(".url").placeholder = item.t === "code" ? CODE_PH : "example.com";
+    return persist();
+  });
+  else if (el.classList.contains("url")) run(() => { item.u = el.value.trim(); return persist(); });
   else if (el.classList.contains("key")) run(async () => {
     msg.textContent = "";
     let k;
@@ -199,9 +207,9 @@ rows.addEventListener("keydown", (e) => {
 });
 
 $("add").addEventListener("click", () => run(async () => {
-  model.push({ k: "", u: "" });
+  model.push({ k: "", u: "", t: "url" });
   build();
-  rows.lastElementChild.querySelector(".url").focus();
+  rows.lastElementChild.querySelector(".key").focus();
 }));
 
 $("refreshBtn").addEventListener("click", () => run(loadIni));
@@ -301,7 +309,7 @@ $("file").addEventListener("change", (e) => {
       const next = raw.map(r => {
         const c = String(r?.c || "").split(",").map(x => x.trim()).filter(Boolean).join(" & ");
         const k = String(r?.k || "").trim();
-        return { k: c && k ? `${k} @ ${c}` : k, u: String(r?.u || "").trim() };
+        return { k: c && k ? `${k} @ ${c}` : k, u: String(r?.u || "").trim(), t: r?.t === "code" ? "code" : "url" };
       }).filter(r => r.k || r.u);
       const ok = (r) => { try { r.k = parseField(r.k).text; return true; } catch { return false; } };
       const skipped = next.filter(r => !ok(r)).length;

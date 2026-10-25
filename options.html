@@ -1,73 +1,158 @@
 <!DOCTYPE html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AHK Receiver</title>
 <style>
-  :root { color-scheme: dark; --bg: #000; --fg: #E0E0E0; --dim: #555; --line: color-mix(in srgb, var(--dim) 45%, transparent); --accent-hover: #60a5fa; }
+  :root {
+    color-scheme: dark;
+    /* set from options.js */
+    --bg: #000;
+    --fg: #E0E0E0;
+    --dim: #555;
+    /* derived: everything adapts to the three user colors */
+    --line: color-mix(in srgb, var(--dim) 45%, var(--bg));      /* opaque hairline */
+    --hair: color-mix(in srgb, var(--dim) 28%, var(--bg));      /* row separators */
+    --well: color-mix(in srgb, var(--fg) 6%, var(--bg));        /* field fill */
+    --wash: color-mix(in srgb, var(--fg) 9%, var(--bg));        /* row hover */
+    --accent: #60a5fa;
+    --err: #ff6b63;
+    --row: 22px;
+  }
   [hidden] { display: none !important; }
   * { box-sizing: border-box; }
-  body { font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; max-width: 1200px; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
-  a { color: inherit; }
-  input, button { vertical-align: middle; font: inherit; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 0; outline: 0; }
-  input { height: 20px; padding: 0 3px }
-  input:focus, button:focus-visible { border-color: var(--fg); }
-  input::placeholder { color: var(--fg); opacity: .3; }
-  button { padding: 0; height: 22px; cursor: pointer; }
-  button:hover { background: var(--fg); color: var(--bg); border-color: var(--fg); }
-  #main { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 0 2px; }
-  #footer { flex: none; }
-  #bottom { position: relative; }
-  #refreshBtn { display:none; } /* Hidden, may be used later */
-  #tools { display: grid; grid-template-columns: 1fr auto 1fr; gap: 4px; }
-  #toolsL, #toolsR, #folder { display: flex; gap: 4px; }
-  #toolsR { justify-self: end; }
-  #tools button span { font-size: 10px; }
-  .dimbutton:not(:hover) { color: var(--dim); }
-  #restore-colors { margin-right:8px; }
-  #settings, #extras { display: flex; flex-wrap: wrap; gap: 4px 0px; padding: 3px 8px; border: 1px solid var(--line); margin-bottom: 1px; }
-  #settings label, #extras label { white-space: nowrap; color: var(--fg); margin-right: 18px; }
-  #settings input { width: 72px; margin-left: 2px; }
-  #setup { padding: 3px 8px; border: 1px solid var(--line); margin-bottom: 1px; }
-  #extras input { margin-left: 2px; }
-  .sw { display: inline-block; width: 14px; height: 14px; vertical-align: middle; border: 1px solid var(--line); margin-left: 5px; }
-  table { margin: 0; border-collapse: collapse; width: 100%; table-layout: fixed; margin-top: 0px; }
-  th { font-weight: normal; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); text-align: left; padding: 1px; border-bottom: 1px solid var(--line); }
-  td { padding: 0px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; line-height: 0; font-family: monospace; }
-  td input, td button { height: 18px; line-height: normal; }
-  th:nth-child(1), td:nth-child(1) { width: 24px; }
-  th:nth-child(2), td:nth-child(2) { width: 83px; }
-  th:nth-child(3), td:nth-child(3) { width: 60%; } /* URL is a fixed share; Shortcut gets the rest (~170px at full width) and absorbs most of the shrinking */
-  td:not(:last-child) { padding-right: 1px; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; max-width: 1200px; height: 100dvh; overflow: hidden;
+    display: flex; flex-direction: column;
+    font: 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--fg);
+  }
+  a { color: var(--accent); }
+
+  /* ---------- controls ---------- */
+  input, button, select {
+    font: inherit; color: inherit; background: transparent;
+    border: 1px solid transparent; border-radius: 3px; outline: 0; vertical-align: middle;
+  }
+  input { height: 20px; padding: 0 5px; }
+  input::placeholder { color: var(--fg); opacity: .28; }
+  button { height: 22px; padding: 0 9px; cursor: pointer; }
+  button:hover:not(:disabled) { background: var(--fg); color: var(--bg); }
+  button:focus-visible, input:focus-visible, select:focus-visible { border-color: var(--fg); }
+  input:focus { border-color: var(--fg); background: var(--well); }
+  button:disabled, input:disabled, select:disabled { opacity: .3; cursor: default; }
+
+  /* ---------- list ---------- */
+  #main { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 6px; scrollbar-color: var(--line) transparent; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; }
+  thead th {
+    position: sticky; top: 0; z-index: 2; background: var(--bg);
+    padding: 7px 4px 5px; text-align: left; font-size: 11px; font-weight: 500;
+    letter-spacing: .02em; color: var(--dim); border-bottom: 1px solid var(--line);
+  }
+  td { padding: 0 2px; height: 26px; vertical-align: middle; border-bottom: 1px solid var(--hair); line-height: 0; }
+  td input, td button, td select { height: var(--row); line-height: normal; vertical-align: middle; }
+  th:nth-child(1), td:nth-child(1) { width: 26px; padding-left: 2px; }
+  th:nth-child(2), td:nth-child(2) { width: 74px; }
+  th:nth-child(3), td:nth-child(3) { width: 126px; min-width: 18px; }
+  th:nth-child(4), td:nth-child(4) { min-width: 220px; }
+
+  tbody tr:hover td, tbody tr:focus-within td { background: var(--wash); }
   tr.empty { color: var(--dim); }
-  .url, .key { width: 100%; }
-  .rm { width: 22px; padding: 0; }
+
+  /* fields read as plain text until you hover or focus them */
+  .key, .url, .pos { font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; font-size: 12px; }
+  td input:hover:not(:focus) { border-color: var(--line); }
+  td input:focus { background: var(--bg); }
+  .url { width: 100%; }
+  .key { width: calc(100% - 24px); }
+
+  /* type switch: U / C chip with a small corner marker */
+  .type {
+    width: 20px; margin-right: 4px; padding: 0; text-align: center; text-align-last: center;
+    appearance: none; cursor: pointer; font: 600 11px ui-monospace, Consolas, monospace;
+    color: var(--dim); background: var(--well); border-color: transparent;
+  }
+  .type:hover { color: var(--fg); border-color: var(--line); }
+  tr:has(.type option[value="code"]:checked) .type { color: var(--accent); }
+  tr:has(.type option[value="code"]:checked) .url { color: var(--accent); }
+  option { background: var(--bg); color: var(--fg); }
+
+  /* position + move + remove: quiet until the row is active */
   .ctl { white-space: nowrap; }
-  .ctl button { width: 20px; padding: 0; font-size: 8px; margin-left: 1px; }
-  .pos { vertical-align: middle; width: 40px; margin: 0; text-align: right; -moz-appearance: textfield; }
+  .pos { width: 40px; padding: 0 2px; font-size: 11px; text-align: right; appearance: textfield; color: var(--dim); }
+  tr:hover .pos, .pos:focus { color: var(--fg); }
   .pos::-webkit-inner-spin-button { display: none; }
-  #add { font-size: 10px; vertical-align: top; width: 22px; height: 18px; padding: 0; align-self: flex-start; }
-  #msg { margin: 1px 0; min-height: 1.4em; font-family: monospace; color: darkred; }
-  #hintBtn { padding: 0 10px; }
-  #hint { display: none; position: absolute; bottom: 0; right: 0; z-index: 10; width: max-content; max-width: 100%; padding: 8px 12px; text-align: left; background: color-mix(in srgb, var(--bg) 67%, transparent); border: 1px solid var(--line); color: var(--fg); font-size: 11px; line-height: 1.4; }
-  #bottom:has(#hintBtn:hover) #hint, #hint:hover { display: block; }
-  button:disabled, input:disabled { opacity: .3; cursor: default; }
-  button:disabled:hover { background: transparent; color: inherit; border-color: var(--line); }
-  button, input, select, textarea, .card, .badge, img { border-radius: 2px; }
-  .monoText { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: bold; color: var(--accent-hover); }
+  .ctl button { width: 16px; padding: 0; font-size: 9px; color: var(--dim); }
+  .ctl button, .rm { color: color-mix(in srgb, var(--fg) 45%, var(--bg)); }
+  .rm { width: 22px; padding: 0; font-size: 14px; }
+  .rm:hover:not(:disabled) { background: var(--err); color: #000; }
+
+  tfoot td { border-bottom: 0; height: 30px; }
+  #add { margin-top: -4px; width: 22px; padding: 0; font-size: 15px; color: var(--dim); border-color: var(--line); border-style: dashed; }
+
+  /* ---------- footer ---------- */
+  #footer { flex: none; border-top: 1px solid var(--line); background: var(--bg); padding: 0 0px 0px; }
+  #setup, #settings, #extras { margin: 6px 0 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 3px; }
+  #setup { border-color: var(--accent); }
+  #settings, #extras { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; }
+  #settings label, #extras label { display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--dim); }
+  #settings input, #extras input { color: var(--fg); background: var(--well); border-color: var(--line); font-family: ui-monospace, Consolas, monospace; }
+  #settings input { width: 74px; }
+  #extras input { width: 110px; }
+  .sw { order: -1; width: 14px; height: 14px; border: 1px solid var(--line); border-radius: 3px; }
+  #settings input { order: 0; }
+  #settings label { flex-direction: row; }
+
+  #msg { min-height: 18px; margin: 4px 0 0; line-height: 18px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--err); }
+  #msg:empty { min-height: 0; margin: 0; }
+
+  #bottom { position: relative; margin-top: 4px; }
+  #refreshBtn { display: none; } /* kept for later use */
+  #tools { display: grid; grid-template-columns: 1fr auto 1fr; gap: 4px; align-items: center; }
+  #toolsL, #toolsR, #folder { display: flex; gap: 2px; align-items: center; }
+  #toolsR { justify-self: end; }
+  #tools button { color: var(--dim); }
+  #tools button:hover:not(:disabled) { color: var(--bg); }
+  #tools button[aria-expanded="true"] { color: var(--fg); }
+  #tools button span { font-size: 10px; margin-left: 2px; }
+  #restore-colors { margin-right: 6px; padding-right: 10px; border-right-color: var(--line); border-radius: 3px 0 0 3px; }
+  #hintBtn { color: var(--fg); }
+
+  #hint {
+    display: none; position: absolute; right: 0; bottom: 100%; z-index: 10;
+    width: max-content; max-width: 100%; padding: 10px 14px; margin-bottom: 0;
+    text-align: left; font-size: 12px; line-height: 1.5;
+    background: color-mix(in srgb, var(--bg) 94%, var(--fg)); border: 1px solid var(--line); border-radius: 3px;
+    box-shadow: 0 -6px 20px rgb(0 0 0 / .45);
+  }
+  #bottom:has(#hintBtn:hover) #hint, #bottom:has(#hintBtn:focus-visible) #hint, #hint:hover { display: block; }
+  .monoText { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: bold; color: var(--accent); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    td, button, input { transition: background-color .08s, border-color .08s, color .08s, opacity .12s; }
+  }
 </style>
+</head>
+<body>
+
 <div id="main">
   <table>
-    <thead><tr><th></th><th>Position</th><th>URL</th><th>Shortcut</th></tr></thead>
+    <thead><tr><th></th><th>Position</th><th>Shortcut</th><th>URL / Command</th></tr></thead>
     <tbody id="rows"></tbody>
+    <tfoot><tr><td><button id="add" title="Add shortcut">+</button></td><td colspan="3"></td></tr></tfoot>
   </table>
-  <button id="add" title="Add shortcut">+</button>
 </div>
+
 <div id="footer">
   <div id="setup" hidden>Helper not detected. Run <b>Firefox AHK Receiver.exe</b> once (per-user install, no admin). This page connects automatically afterwards. <a id="dl" target="_blank" rel="noopener" hidden>Download</a></div>
-  <div id="msg"></div>
+  <div id="msg" role="status" aria-live="polite"></div>
   <div id="settings" hidden>
     <label>Background <input data-key="bg" spellcheck="false"><span class="sw"></span></label>
-    <label>Active font <input data-key="active" spellcheck="false"><span class="sw"></span></label>
-    <label>Cleared font <input data-key="cleared" spellcheck="false"><span class="sw"></span></label>
+    <label>Foreground <input data-key="active" spellcheck="false"><span class="sw"></span></label>
+    <label>Dimmed <input data-key="cleared" spellcheck="false"><span class="sw"></span></label>
   </div>
   <div id="extras" hidden>
     <label title="Global hotkey that opens this page (its moz-extension URL can change, so it can't be a list shortcut)">Shortcut to this page <input id="optionsKey" placeholder="!o" spellcheck="false"></label>
@@ -76,22 +161,27 @@
     <div id="tools">
       <div id="toolsL">
         <button id="restore-colors">Restore Colors</button>
-        <button id="settingsBtn" aria-expanded="false" aria-controls="settings">Settings <span>&#9656;</span></button>
-        <button id="extrasBtn" aria-expanded="false" aria-controls="extras">Extras <span>&#9656;</span></button>
+        <button id="settingsBtn" aria-expanded="false" aria-controls="settings">Settings <span>▸</span></button>
+        <button id="extrasBtn" aria-expanded="false" aria-controls="extras">Extras <span>▸</span></button>
       </div>
       <div id="folder">
         <button id="refreshBtn" title="Reload the config from the helper's ini">Refresh</button>
       </div>
       <div id="toolsR">
         <button id="hintBtn" aria-describedby="hint">Help</button>
-        <button id="export" class="dimbutton">Export Backup</button>
-        <button id="import" class="dimbutton">Import Backup</button>
+        <button id="export">Export Backup</button>
+        <button id="import">Import Backup</button>
         <input type="file" id="file" accept=".json" hidden>
       </div>
     </div>
-    <div id="hint">- <b>v2 Hotkey Syntax</b>: <span class="monoText">^=Ctrl, !=Alt, +=Shift, #=Win</span><br>- <b>Conditions:</b> <span class="monoText">gks</span>: (key that must be held), <span class="monoText">gf</span>: (global AHK flag)<br>- <b>Conditions syntax:</b> <span class="monoText">@</span> starts conditions, use <span class="monoText">&amp;</span> for "and" or <span class="monoText">|</span> for "or" inside conditions, <span class="monoText">_</span> starts an alternative hotkey<br>- <b>Example shortcut:</b> <span class="monoText">!b _ b @ gks:c &amp; gks:v | gf:AllowB</span><br>-- <b>Plain text explanation:</b> "(Trigger with <b>alt+b</b>), or (trigger with <b>c+v+b</b>, or trigger with <b>b only when global AHK flag AllowB</b> is active)"<br><br><i>- Requires installing the updated AHK companion process<br>- Shortcuts only fire while a Firefox-based browser is focused<br>- Press Enter inside a position number box to reorder quickly<br>- Edits update the .ini live</i></div>
+    <div id="hint">- <b>v2 Hotkey Syntax</b>: <span class="monoText">^</span>=<i>Ctrl</i>, <span class="monoText">!</span>=<i>Alt</i>, <span class="monoText">+</span>=<i>Shift</i>, <span class="monoText">#</span>=<i>Win</i><br>- <b>Conditions:</b> <span class="monoText">gks</span>: (key that must be held), <span class="monoText">gf</span>: (global AHK flag)<br>- <b>Conditions syntax:</b> <span class="monoText">@</span> starts conditions, use <span class="monoText">&amp;</span> for <i>"and"</i> and <span class="monoText">|</span> for <i>"or"</i> inside conditions, <span class="monoText">_</span> starts a new hotkey for the same URL<br>- <b>Example shortcut:</b> <span class="monoText">!b _ b @ gks:c&amp;gks:v | gf:AllowB</span><br>-- <b>Example explanation:</b> "(Trigger with <i>alt+b</i>), or (trigger with <i>c+v+b</i>, or trigger with <i>b only when global AHK flag AllowB</i> is active)"<br><br>- <b>Shortcut type </b> <i>C</i> accepts AHKv2 code instead of a URL, use <span class="monoText">|</span> for line breaks<br><br><i>- Requires installing the updated AHK companion process<br>- Shortcuts only fire while a Firefox-based browser is focused<br>- Press Enter inside a position number box to reorder quickly<br>- Edits update the .ini live</i></div>
   </div>
 </div>
-<template id="row"><tr><td><button class="rm" title="Remove shortcut">&minus;</button></td><td class="ctl"><input class="pos" type="number" min="1" title="Position (Enter to jump)"><button class="up" title="Move up">&#9650;</button><button class="dn" title="Move down">&#9660;</button></td><td><input class="url" placeholder="example.com" spellcheck="false"></td><td><input class="key" placeholder="!x" spellcheck="false"></td></tr></template>
+
+<!-- Single line: whitespace between inline cells would change layout -->
+<template id="row"><tr><td><button class="rm" title="Remove shortcut">−</button></td><td class="ctl"><input class="pos" type="number" min="1" title="Position (Enter to jump)"><button class="up" title="Move up">▲</button><button class="dn" title="Move down">▼</button></td><td><select class="type" title="U = URL, C = Code"><option value="url">U</option><option value="code">C</option></select><input class="key" placeholder="!x" spellcheck="false"></td><td><input class="url" placeholder="example.com" spellcheck="false"></td></tr></template>
+
 <script src="ini.js"></script>
 <script src="options.js"></script>
+</body>
+</html>
