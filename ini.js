@@ -13,7 +13,7 @@
 //   )"
 //   popups = "
 //   (
-//   [popup name]
+//   [popup name]   (an unnamed popup is written as [<its shortcut>], and read back as unnamed)
 //   <shortcut field, or _ for none><TAB><url or {ahk code}>
 //   )"
 // Mirrors how Firefox AHK Receiver.ahk reads it, but strict, so odd files are reported, not rewritten.
@@ -98,16 +98,31 @@ function parseIni(text) {
     if (used.has(key)) throw new Error(`Popup "${r.u}" is used by more than one shortcut.`);
     used.add(key);
     r.s = (pops && pops.get(key)) || [];
+    if (key === popupKey(r.k).toLowerCase()) r.u = "";   // written for an unnamed popup: named after its own shortcut
   }
   if (pops) for (const key of pops.keys()) if (!used.has(key)) throw new Error(`Popup "${key}" has no shortcut of type P pointing to it.`);
   return { ...v, rows };
 }
 
+// Ini name used for a popup without a name: its shortcut, minus characters not allowed in names
+const popupKey = (k) => k.replace(/[\[\]\t]/g, "").trim() || "unnamed";
+
 // Only complete rows (shortcut and URL) are written; popup sub rows only need a URL ("_" stands for no shortcut).
-// A popup may be empty.
+// A popup needs a shortcut but no name (it is then named after its shortcut) and may be empty.
 function serializeIni(s, optionsKey, rows, pk) {
-  const done = (r) => r.k && r.u;
-  const line = (r) => `${r.k || "_"}\t${r.t === "code" ? `{${r.u}}` : r.t === "popup" ? `[${r.u}]` : r.u}`;
+  const done = (r) => r.k && (r.u || r.t === "popup");
+  const names = new Map();   // popup row -> name written to the ini
+  const taken = new Set(rows.filter(r => r.t === "popup" && done(r) && r.u).map(r => r.u.toLowerCase()));
+  for (const r of rows) {
+    if (r.t !== "popup" || !done(r) || r.u) continue;
+    const base = popupKey(r.k);
+    let n = base, i = 2;
+    while (taken.has(n.toLowerCase())) n = `${base} ${i++}`;   // clash with a named popup
+    taken.add(n.toLowerCase());
+    names.set(r, n);
+  }
+  const name = (r) => names.get(r) ?? r.u;
+  const line = (r) => `${r.k || "_"}\t${r.t === "code" ? `{${r.u}}` : r.t === "popup" ? `[${name(r)}]` : r.u}`;
   const pops = rows.filter(r => r.t === "popup" && done(r))
     .map(r => ({ r, s: (r.s || []).filter(x => x.u) }));
   const body = rows.filter(done).map(line);
@@ -120,6 +135,6 @@ function serializeIni(s, optionsKey, rows, pk) {
     `popup_close = ${pk.close}`,
     `popup_position = ${pk.pos}`,
     'list = "', "(", ...body, ')"',
-    'popups = "', "(", ...pops.flatMap(p => [`[${p.r.u}]`, ...p.s.map(line)]), ')"'
+    'popups = "', "(", ...pops.flatMap(p => [`[${name(p.r)}]`, ...p.s.map(line)]), ')"'
   ].join("\r\n");
 }

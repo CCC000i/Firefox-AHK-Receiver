@@ -146,7 +146,7 @@
   <table>
     <thead><tr><th></th><th>Position</th><th>Shortcut</th><th>URL / Command</th></tr></thead>
     <tbody id="rows"></tbody>
-    <tfoot><tr><td><button id="add" title="Add shortcut">+</button></td><td colspan="3"></td></tr></tfoot>
+    <tfoot><tr><td><button id="add" title="Add Shortcut">+</button></td><td colspan="3"></td></tr></tfoot>
   </table>
   <div id="subs"></div>
 </div>
@@ -155,15 +155,15 @@
   <div id="setup" hidden>Helper not detected. Run <b>Firefox AHK Receiver.exe</b> once (per-user install, no admin). This page connects automatically afterwards. <a id="dl" target="_blank" rel="noopener" hidden>Download</a></div>
   <div id="msg" role="status" aria-live="polite"></div>
   <div id="settings" hidden>
-    <label>Background <input data-key="bg" spellcheck="false"><span class="sw"></span></label>
-    <label>Foreground <input data-key="active" spellcheck="false"><span class="sw"></span></label>
-    <label>Dimmed <input data-key="cleared" spellcheck="false"><span class="sw"></span></label>
-    <label title="Key(s) that select a popup entry (clicking outside closes the popup). Same syntax as the Shortcut field: several hotkeys with _, conditions with @">Popup select <input data-pop="sel" spellcheck="false"></label>
-    <label title="Key(s) that close the popup. Same syntax as the Shortcut field: several hotkeys with _, conditions with @">Popup close <input data-pop="close" spellcheck="false"></label>
-    <label title="Where a popup appears">Popup position <select data-pop="pos"><option value="center">Centered on cursor</option><option value="cursor">Top-left at cursor</option><option value="viewport">Page top-left</option></select></label>
+    <label>Background: <input data-key="bg" spellcheck="false"><span class="sw"></span></label>
+    <label>Foreground: <input data-key="active" spellcheck="false"><span class="sw"></span></label>
+    <label>Dimmed: <input data-key="cleared" spellcheck="false"><span class="sw"></span></label>
+    <label title="Key(s) that select a popup entry (clicking outside closes the popup). Same syntax as the Shortcut field: several hotkeys with _, conditions with @.">Click in popup: <input data-pop="sel" spellcheck="false"></label>
+    <label title="Key(s) that close the popup. Same syntax as the Shortcut field: several hotkeys with _, conditions with @.">Popup close: <input data-pop="close" spellcheck="false"></label>
+    <label title="Where a popup appears.">Popup position: <select data-pop="pos"><option value="center">Centered on cursor</option><option value="cursor">Top-left at cursor</option><option value="viewport">Page top-left</option></select></label>
   </div>
   <div id="extras" hidden>
-    <label title="Global hotkey that opens this page (its moz-extension URL can change, so it can't be a list shortcut)">Shortcut to this page <input id="optionsKey" placeholder="!o" spellcheck="false"></label>
+    <label title="Global hotkey that opens this page (the moz-extension address is subject to change, so it can't be a list shortcut).">Shortcut to this page: <input id="optionsKey" placeholder="!o" spellcheck="false"></label>
   </div>
   <div id="bottom">
     <div id="tools">
@@ -187,9 +187,9 @@
 </div>
 
 <!-- Single line: whitespace between inline cells would change layout -->
-<template id="row"><tr><td><button class="rm" title="Remove shortcut">−</button></td><td class="ctl"><input class="pos" type="number" min="1" title="Position (Enter to jump)"><button class="up" title="Move up">▲</button><button class="dn" title="Move down">▼</button></td><td><select class="type" title="U = URL, C = Code, P = Popup"><option value="url">U</option><option value="code">C</option><option value="popup">P</option></select><input class="key" placeholder="!x" spellcheck="false"></td><td><input class="url" placeholder="example.com" spellcheck="false"></td></tr></template>
+<template id="row"><tr><td><button class="rm" title="Remove Shortcut">−</button></td><td class="ctl"><input class="pos" type="number" min="1" title="Position (press Enter to jump)"><button class="up" title="Move Up">▲</button><button class="dn" title="Move Down">▼</button></td><td><select class="type" title="U = URL, C = Code, P = Popup"><option value="url">U</option><option value="code">C</option><option value="popup">P</option></select><input class="key" placeholder="!x" spellcheck="false"></td><td><input class="url" placeholder="example.com" spellcheck="false"></td></tr></template>
 
-<template id="sub"><section class="sub"><table><caption>Popup <b></b></caption><thead><tr><th></th><th>Position</th><th>Shortcut</th><th>URL / Command</th></tr></thead><tbody></tbody><tfoot><tr><td><button class="sadd" title="Add shortcut">+</button></td><td colspan="3"></td></tr></tfoot></table></section></template>
+<template id="sub"><section class="sub"><table><caption>Popup <b></b></caption><thead><tr><th></th><th>Position</th><th>Shortcut</th><th>URL / Command</th></tr></thead><tbody></tbody><tfoot><tr><td><button class="sadd" title="Add Shortcut">+</button></td><td colspan="3"></td></tr></tfoot></table></section></template>
 
 <script src="ini.js"></script>
 <script src="options.js"></script>

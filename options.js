@@ -2,7 +2,7 @@ const DEFAULTS = { bg: "#000", active: "#E0E0E0", cleared: "#555" };
 const POP_DEFAULTS = { sel: "lbutton_space_enter", close: "Esc", pos: "cursor" };
 const POP_POS = ["center", "cursor", "viewport"];
 const CODE_PH = 'Send("^c")|Sleep(50)|Send("^v")';
-const PH = { url: "example.com", code: CODE_PH, popup: "Popup name" };
+const PH = { url: "example.com", code: CODE_PH, popup: "Popup Name (Optional)" };
 const CSS_VARS = { bg: "--bg", active: "--fg", cleared: "--dim" };
 const $ = (id) => document.getElementById(id);
 const main = $("main"), rows = $("rows"), subsBox = $("subs"), msg = $("msg"), optionsKeyInput = $("optionsKey");
@@ -114,6 +114,9 @@ function makeRow(r, i, si, len) {
   return tr;
 }
 
+// Caption for a popup's sub table: name, else its shortcut, else "(unnamed)"
+const popupTitle = (p) => p.u || p.k || "(unnamed)";
+
 function build() {
   rows.replaceChildren(...model.map((r, i) => makeRow(r, i, "", model.length)));
   const secs = [];
@@ -122,7 +125,7 @@ function build() {
     if (!p.s) p.s = [];
     const sec = $("sub").content.firstElementChild.cloneNode(true);
     sec.dataset.s = si;
-    sec.querySelector("b").textContent = p.u || "(unnamed)";
+    sec.querySelector("b").textContent = popupTitle(p);
     sec.querySelector("tbody").replaceChildren(...p.s.map((r, i) => makeRow(r, i, si, p.s.length)));
     secs.push(sec);
   });
@@ -216,7 +219,7 @@ main.addEventListener("change", (e) => {
       try { checkName(v, item); }
       catch (err) { msg.textContent = err.message; el.value = item.u; return; }
       const sec = subsBox.querySelector(`section[data-s="${tr.dataset.i}"] b`);
-      if (sec) sec.textContent = v || "(unnamed)";
+      if (sec) sec.textContent = v || item.k || "(unnamed)";
     }
     el.value = v;
     item.u = v;
@@ -231,6 +234,10 @@ main.addEventListener("change", (e) => {
     refresh(tr);
     if (k === item.k) return;
     item.k = k;
+    if (item.t === "popup" && !sub) {
+      const sec = subsBox.querySelector(`section[data-s="${tr.dataset.i}"] b`);
+      if (sec) sec.textContent = popupTitle(item);
+    }
     await persist();
   });
 });
@@ -359,7 +366,7 @@ function checkPopKey(which, v) {
     seen.add(e.id);
     if (other.some(x => x.id === e.id)) throw new Error(`${e.hk} with the same conditions is already used as the popup ${otherName === "sel" ? "select" : "close"} key.`);
     const hit = model.find(r => r.t === "popup" && (r.s || []).some(x => parseField(x.k, false).entries.some(y => y.id === e.id)));
-    if (hit) throw new Error(`${e.hk} with the same conditions is already used by a shortcut in popup "${hit.u}".`);
+    if (hit) throw new Error(`${e.hk} with the same conditions is already used by a shortcut in popup "${popupTitle(hit)}".`);
   }
   return text;
 }
@@ -424,8 +431,8 @@ $("file").addEventListener("change", (e) => {
         try {
           r.k = parseField(r.k).text;
           if (r.t === "popup") {
-            if (/[\[\]\t]/.test(r.u) || names.has(r.u.toLowerCase())) throw 0;
-            names.add(r.u.toLowerCase());
+            if (/[\[\]\t]/.test(r.u) || (r.u && names.has(r.u.toLowerCase()))) throw 0;
+            if (r.u) names.add(r.u.toLowerCase());
             r.s = r.s.filter(x => (ok(x) || (skipped++, false)));
           }
           return true;
