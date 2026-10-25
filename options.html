@@ -49,7 +49,7 @@
   table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; }
   thead th {
     position: sticky; top: 0; z-index: 2; background: var(--bg);
-    padding: 7px 4px 5px; text-align: left; font-size: 11px; font-weight: 500;
+    padding: 4px 4px 5px; text-align: left; font-size: 11px; font-weight: 500;
     letter-spacing: .02em; color: var(--dim); border-bottom: 1px solid var(--line);
   }
   td { padding: 0 2px; height: 26px; vertical-align: middle; border-bottom: 1px solid var(--hair); line-height: 0; }
@@ -76,8 +76,9 @@
     color: var(--dim); background: var(--well); border-color: transparent;
   }
   .type:hover { color: var(--fg); border-color: var(--line); }
-  tr:has(.type option[value="code"]:checked) .type { color: var(--accent); }
+  tr:has(.type option[value="code"]:checked) .type, tr:has(.type option[value="popup"]:checked) .type { color: var(--accent); }
   tr:has(.type option[value="code"]:checked) .url { color: var(--accent); }
+  tr:has(.type option[value="popup"]:checked) .url { color: var(--dim); }
   option { background: var(--bg); color: var(--fg); }
 
   /* position + move + remove: quiet until the row is active */
@@ -90,8 +91,9 @@
   .rm { width: 22px; padding: 0; font-size: 14px; }
   .rm:hover:not(:disabled) { background: var(--err); color: #000; }
 
-  tfoot td { border-bottom: 0; height: 30px; }
-  #add { margin-top: -4px; width: 22px; padding: 0; font-size: 15px; color: var(--dim); border-color: var(--line); border-style: dashed; }
+  caption { caption-side: top; text-align: left; padding: 8px 6px 0px; font-size: 11px; letter-spacing: .02em; color: var(--dim); }
+  caption b { font: 600 12px ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; color: var(--accent); }
+  #add, .sadd { width: 22px; padding: 0; font-size: 15px; color: var(--dim); border-color: var(--line); border-style: dashed; }
 
   /* ---------- footer ---------- */
   #footer { flex: none; border-top: 1px solid var(--line); background: var(--bg); padding: 0 0px 0px; }
@@ -101,6 +103,8 @@
   #settings label, #extras label { display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--dim); }
   #settings input, #extras input { color: var(--fg); background: var(--well); border-color: var(--line); font-family: ui-monospace, Consolas, monospace; }
   #settings input { width: 74px; }
+  #settings input[data-pop] { width: 150px; }
+  #settings select { height: 20px; color: var(--fg); background: var(--well); border-color: var(--line); }
   #extras input { width: 110px; }
   .sw { order: -1; width: 14px; height: 14px; border: 1px solid var(--line); border-radius: 3px; }
   #settings input { order: 0; }
@@ -144,6 +148,7 @@
     <tbody id="rows"></tbody>
     <tfoot><tr><td><button id="add" title="Add shortcut">+</button></td><td colspan="3"></td></tr></tfoot>
   </table>
+  <div id="subs"></div>
 </div>
 
 <div id="footer">
@@ -153,6 +158,9 @@
     <label>Background <input data-key="bg" spellcheck="false"><span class="sw"></span></label>
     <label>Foreground <input data-key="active" spellcheck="false"><span class="sw"></span></label>
     <label>Dimmed <input data-key="cleared" spellcheck="false"><span class="sw"></span></label>
+    <label title="Key(s) that select a popup entry (clicking outside closes the popup). Same syntax as the Shortcut field: several hotkeys with _, conditions with @">Popup select <input data-pop="sel" spellcheck="false"></label>
+    <label title="Key(s) that close the popup. Same syntax as the Shortcut field: several hotkeys with _, conditions with @">Popup close <input data-pop="close" spellcheck="false"></label>
+    <label title="Where a popup appears">Popup position <select data-pop="pos"><option value="center">Centered on cursor</option><option value="cursor">Top-left at cursor</option><option value="viewport">Page top-left</option></select></label>
   </div>
   <div id="extras" hidden>
     <label title="Global hotkey that opens this page (its moz-extension URL can change, so it can't be a list shortcut)">Shortcut to this page <input id="optionsKey" placeholder="!o" spellcheck="false"></label>
@@ -174,12 +182,14 @@
         <input type="file" id="file" accept=".json" hidden>
       </div>
     </div>
-    <div id="hint">- <b>v2 Hotkey Syntax</b>: <span class="monoText">^</span>=<i>Ctrl</i>, <span class="monoText">!</span>=<i>Alt</i>, <span class="monoText">+</span>=<i>Shift</i>, <span class="monoText">#</span>=<i>Win</i><br>- <b>Conditions:</b> <span class="monoText">gks</span>: (key that must be held), <span class="monoText">gf</span>: (global AHK flag)<br>- <b>Conditions syntax:</b> <span class="monoText">@</span> starts conditions, use <span class="monoText">&amp;</span> for <i>"and"</i> and <span class="monoText">|</span> for <i>"or"</i> inside conditions, <span class="monoText">_</span> starts a new hotkey for the same URL<br>- <b>Example shortcut:</b> <span class="monoText">!b _ b @ gks:c&amp;gks:v | gf:AllowB</span><br>-- <b>Example explanation:</b> "(Trigger with <i>alt+b</i>), or (trigger with <i>c+v+b</i>, or trigger with <i>b only when global AHK flag AllowB</i> is active)"<br><br>- <b>Shortcut type </b> <i>C</i> accepts AHKv2 code instead of a URL, use <span class="monoText">|</span> for line breaks<br><br><i>- Requires installing the updated AHK companion process<br>- Shortcuts only fire while a Firefox-based browser is focused<br>- Press Enter inside a position number box to reorder quickly<br>- Edits update the .ini live</i></div>
+    <div id="hint">- <b>v2 Hotkey Syntax</b>: <span class="monoText">^</span>=<i>Ctrl</i>, <span class="monoText">!</span>=<i>Alt</i>, <span class="monoText">+</span>=<i>Shift</i>, <span class="monoText">#</span>=<i>Win</i><br>- <b>Conditions:</b> <span class="monoText">gks</span>: (key that must be held), <span class="monoText">gf</span>: (global AHK flag)<br>- <b>Conditions Syntax:</b> <span class="monoText">@</span> starts conditions, use <span class="monoText">&amp;</span> for <i>"and"</i> and <span class="monoText">|</span> for <i>"or"</i> inside conditions, <span class="monoText">_</span> starts a new hotkey for the same URL<br>- <b>Example Shortcut:</b> <span class="monoText">!b _ b @ gks:c&amp;gks:v | gf:AllowB</span><br>-- <b>Example Explanation:</b> "Trigger with <i>alt+b</i>", or "(trigger with <i>c+v+b</i>), or (trigger with <i>b only when global AHK flag AllowB</i> is active)"<br><br>- <b>Shortcut type </b> <i>C</i> accepts AHKv2 code instead of a URL, use <span class="monoText">|</span> for line breaks<br>- <b>Shortcut type </b> <i>P</i> creates a popup with follow-up commands<br><br><i>- Requires installing the updated AHK companion process<br>- Shortcuts only fire while a Firefox-based browser is focused<br>- Press Enter inside a position number box to reorder quickly<br>- Edits update the .ini live</i></div>
   </div>
 </div>
 
 <!-- Single line: whitespace between inline cells would change layout -->
-<template id="row"><tr><td><button class="rm" title="Remove shortcut">−</button></td><td class="ctl"><input class="pos" type="number" min="1" title="Position (Enter to jump)"><button class="up" title="Move up">▲</button><button class="dn" title="Move down">▼</button></td><td><select class="type" title="U = URL, C = Code"><option value="url">U</option><option value="code">C</option></select><input class="key" placeholder="!x" spellcheck="false"></td><td><input class="url" placeholder="example.com" spellcheck="false"></td></tr></template>
+<template id="row"><tr><td><button class="rm" title="Remove shortcut">−</button></td><td class="ctl"><input class="pos" type="number" min="1" title="Position (Enter to jump)"><button class="up" title="Move up">▲</button><button class="dn" title="Move down">▼</button></td><td><select class="type" title="U = URL, C = Code, P = Popup"><option value="url">U</option><option value="code">C</option><option value="popup">P</option></select><input class="key" placeholder="!x" spellcheck="false"></td><td><input class="url" placeholder="example.com" spellcheck="false"></td></tr></template>
+
+<template id="sub"><section class="sub"><table><caption>Popup <b></b></caption><thead><tr><th></th><th>Position</th><th>Shortcut</th><th>URL / Command</th></tr></thead><tbody></tbody><tfoot><tr><td><button class="sadd" title="Add shortcut">+</button></td><td colspan="3"></td></tr></tfoot></table></section></template>
 
 <script src="ini.js"></script>
 <script src="options.js"></script>

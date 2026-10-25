@@ -1,18 +1,23 @@
 const DEFAULTS = { bg: "#000", active: "#E0E0E0", cleared: "#555" };
+const POP_DEFAULTS = { sel: "lbutton_space_enter", close: "Esc", pos: "cursor" };
+const POP_POS = ["center", "cursor", "viewport"];
 const CODE_PH = 'Send("^c")|Sleep(50)|Send("^v")';
+const PH = { url: "example.com", code: CODE_PH, popup: "Popup name" };
 const CSS_VARS = { bg: "--bg", active: "--fg", cleared: "--dim" };
 const $ = (id) => document.getElementById(id);
-const rows = $("rows"), msg = $("msg"), optionsKeyInput = $("optionsKey");
+const main = $("main"), rows = $("rows"), subsBox = $("subs"), msg = $("msg"), optionsKeyInput = $("optionsKey");
 const setupBox = $("setup"), dl = $("dl");
 const SETUP_URL = "";   // helper download page; button hidden if empty
 if (SETUP_URL) { dl.href = SETUP_URL; dl.hidden = false; }
 const settingsBox = $("settings"), settingsBtn = $("settingsBtn");
 const extrasBox = $("extras"), extrasBtn = $("extrasBtn");
 const hexInputs = [...settingsBox.querySelectorAll("input[data-key]")];
+const popInputs = [...settingsBox.querySelectorAll("[data-pop]")];
 
-let model = [];                       // { k: shortcut field, u: url }, incl. blank just-added rows (not written)
+let model = [];                       // { k: shortcut field, u: url/code/popup name, t, s? (popup sub rows) }, incl. blank just-added rows (not written)
 let optionsKey = "";
 let settings = { ...DEFAULTS };
+let popKeys = { ...POP_DEFAULTS };
 let loaded = false;                   // true only after a valid ini was loaded; nothing is written otherwise
 
 // Serialize ini loads/writes
@@ -36,7 +41,7 @@ async function callHost(req) {
 async function persist() {
   if (!loaded) { msg.textContent = "No valid ini is loaded, so nothing was saved."; return; }
   try {
-    await callHost({ cmd: "write", text: serializeIni(settings, optionsKey, model) });
+    await callHost({ cmd: "write", text: serializeIni(settings, optionsKey, model, popKeys) });
   } catch (e) {
     msg.textContent = `Could not save the ini: ${e.message}`;
   }
@@ -44,8 +49,8 @@ async function persist() {
 
 function setLoaded(ok) {
   loaded = ok;
-  for (const el of [$("add"), $("import"), $("restore-colors"), optionsKeyInput, ...hexInputs]) el.disabled = !ok;
-  if (!ok) { model = []; optionsKey = ""; optionsKeyInput.value = ""; applySettings({ ...DEFAULTS }); build(); }
+  for (const el of [$("add"), $("import"), $("restore-colors"), optionsKeyInput, ...hexInputs, ...popInputs]) el.disabled = !ok;
+  if (!ok) { model = []; optionsKey = ""; optionsKeyInput.value = ""; applyPop({}); applySettings({ ...DEFAULTS }); build(); }
 }
 
 const fail = (t, down) => { setLoaded(false); msg.textContent = t; setupBox.hidden = !down; };
@@ -68,6 +73,7 @@ async function loadIni() {
   if (!text.trim()) {
     setLoaded(true);
     model = []; optionsKey = ""; optionsKeyInput.value = "";
+    applyPop({});
     applySettings({ ...DEFAULTS });
     build();
     await persist();
@@ -81,43 +87,61 @@ async function loadIni() {
   model = parsed.rows;
   optionsKey = parsed.optionsKey || "";
   optionsKeyInput.value = optionsKey;
+  applyPop({ sel: parsed.popSel, close: parsed.popClose, pos: parsed.popPos });
   applySettings(mergeSettings(parsed));
   build();
 }
 
 // ---- Rows ----
+const blank = () => ({ k: "", u: "", t: "url" });
+const listOf = (tr) => tr.dataset.s === "" ? model : model[+tr.dataset.s].s;
+const rowEl = (si, i) => main.querySelector(`tr[data-s="${si}"][data-i="${i}"]`);
+
+// si = "" for main rows, else the index of the owning popup row
+function makeRow(r, i, si, len) {
+  const tr = $("row").content.firstElementChild.cloneNode(true);
+  tr.dataset.i = i;
+  tr.dataset.s = si;
+  const f = (c) => tr.querySelector("." + c);
+  if (si !== "") f("type").querySelector('option[value="popup"]').remove();   // no nested popups
+  f("url").value = r.u;
+  f("key").value = r.k;
+  f("type").value = r.t;
+  f("url").placeholder = PH[r.t];
+  f("pos").value = i + 1;
+  f("pos").max = len;
+  refresh(tr);
+  return tr;
+}
+
 function build() {
-  const tpl = $("row").content.firstElementChild;
-  const frag = document.createDocumentFragment();
-  model.forEach((r, i) => {
-    const tr = tpl.cloneNode(true);
-    tr.dataset.i = i;
-    const f = (c) => tr.querySelector("." + c);
-    f("url").value = r.u;
-    f("key").value = r.k;
-    f("type").value = r.t;
-    f("url").placeholder = r.t === "code" ? CODE_PH : "example.com";
-    f("pos").value = i + 1;
-    f("pos").max = model.length;
-    refresh(tr);
-    frag.appendChild(tr);
+  rows.replaceChildren(...model.map((r, i) => makeRow(r, i, "", model.length)));
+  const secs = [];
+  model.forEach((p, si) => {
+    if (p.t !== "popup") return;
+    if (!p.s) p.s = [];
+    const sec = $("sub").content.firstElementChild.cloneNode(true);
+    sec.dataset.s = si;
+    sec.querySelector("b").textContent = p.u || "(unnamed)";
+    sec.querySelector("tbody").replaceChildren(...p.s.map((r, i) => makeRow(r, i, si, p.s.length)));
+    secs.push(sec);
   });
-  rows.replaceChildren(frag);
+  subsBox.replaceChildren(...secs);
 }
 
 // Row is "empty" (cleared color) when URL and shortcut are both blank
 const refresh = (tr) =>
   tr.classList.toggle("empty", ![".url", ".key"].some(c => tr.querySelector(c).value.trim()));
 
-// Move a row to index `to`, rebuild, refocus the same control
-const go = (item, to, sel) => run(async () => {
-  const from = model.indexOf(item);
-  to = Math.max(0, Math.min(model.length - 1, to));
+// Move a row to index `to` within its list, rebuild, refocus the same control
+const go = (list, si, item, to, sel) => run(async () => {
+  const from = list.indexOf(item);
+  to = Math.max(0, Math.min(list.length - 1, to));
   if (from < 0) return;
-  if (from === to) { rows.children[from].querySelector(".pos").value = from + 1; return; }
-  model.splice(to, 0, ...model.splice(from, 1));
+  if (from === to) { rowEl(si, from).querySelector(".pos").value = from + 1; return; }
+  list.splice(to, 0, ...list.splice(from, 1));
   build();
-  rows.children[to].querySelector(sel).focus();
+  rowEl(si, to).querySelector(sel).focus();
   await persist();
 });
 
@@ -142,35 +166,66 @@ function parseField(s, strict = true) {
   return { text, entries };
 }
 
-// Validates a field for `item`; returns the normalized text or throws Error(message)
-function checkField(v, item) {
+// Validates a field for `item` within `list` (sub = popup sub table); returns the normalized text or throws Error(message)
+function checkField(v, item, list, sub) {
   const { text, entries } = parseField(v);
   const seen = new Set();
   for (const e of entries) {
     if (seen.has(e.id)) throw new Error(`"${e.hk}" with the same conditions appears twice in this field.`);
     seen.add(e.id);
-    const dup = model.findIndex(r => r !== item && parseField(r.k, false).entries.some(x => x.id === e.id));
-    if (dup >= 0) throw new Error(`${e.hk} with the same conditions is already used by row ${dup + 1}.`);
-    if (optionsKey && e.hk.toLowerCase() === optionsKey.toLowerCase()) throw new Error(`${e.hk} is already used by the Options shortcut.`);
+    const dup = list.findIndex(r => r !== item && parseField(r.k, false).entries.some(x => x.id === e.id));
+    if (dup >= 0) throw new Error(`${e.hk} with the same conditions is already used by row ${dup + 1}${sub ? " of this popup" : ""}.`);
+    const lc = e.hk.toLowerCase();
+    if (!sub && optionsKey && lc === optionsKey.toLowerCase()) throw new Error(`${e.hk} is already used by the Options shortcut.`);
+    if (sub && [popKeys.sel, popKeys.close].some(f => parseField(f, false).entries.some(x => x.id === e.id))) throw new Error(`${e.hk} with the same conditions is already used as a popup select/close key.`);
   }
   return text;
 }
 
-rows.addEventListener("input", (e) => refresh(e.target.closest("tr")));
+// Popup names link a P row to its sub table in the ini
+function checkName(v, item) {
+  if (/[\[\]\t]/.test(v)) throw new Error("Popup names cannot contain [ ] or tabs.");
+  const dup = v ? model.findIndex(r => r !== item && r.t === "popup" && r.u.toLowerCase() === v.toLowerCase()) : -1;
+  if (dup >= 0) throw new Error(`Popup name "${v}" is already used by row ${dup + 1}.`);
+}
 
-rows.addEventListener("change", (e) => {
-  const el = e.target, tr = el.closest("tr"), item = model[+tr.dataset.i];
+main.addEventListener("input", (e) => { const tr = e.target.closest("tr"); if (tr) refresh(tr); });
+
+main.addEventListener("change", (e) => {
+  const el = e.target, tr = el.closest("tr");
+  if (!tr || tr.dataset.i === undefined) return;
+  const list = listOf(tr), item = list[+tr.dataset.i], sub = tr.dataset.s !== "";
   if (!item) return;
-  if (el.classList.contains("type")) run(() => {
-    item.t = el.value;
-    tr.querySelector(".url").placeholder = item.t === "code" ? CODE_PH : "example.com";
-    return persist();
+  if (el.classList.contains("type")) run(async () => {
+    msg.textContent = "";
+    const t = el.value, was = item.t;
+    if (t === "popup") {
+      try { checkName(item.u, item); }
+      catch (err) { msg.textContent = err.message; el.value = was; return; }
+      if (!item.s) item.s = [];
+    }
+    item.t = t;
+    if (t === "popup" || was === "popup") build();
+    else tr.querySelector(".url").placeholder = PH[t];
+    await persist();
   });
-  else if (el.classList.contains("url")) run(() => { item.u = el.value.trim(); return persist(); });
+  else if (el.classList.contains("url")) run(async () => {
+    msg.textContent = "";
+    const v = el.value.trim();
+    if (item.t === "popup") {
+      try { checkName(v, item); }
+      catch (err) { msg.textContent = err.message; el.value = item.u; return; }
+      const sec = subsBox.querySelector(`section[data-s="${tr.dataset.i}"] b`);
+      if (sec) sec.textContent = v || "(unnamed)";
+    }
+    el.value = v;
+    item.u = v;
+    await persist();
+  });
   else if (el.classList.contains("key")) run(async () => {
     msg.textContent = "";
     let k;
-    try { k = checkField(el.value, item); }
+    try { k = checkField(el.value, item, list, sub); }
     catch (err) { msg.textContent = err.message; el.value = item.k; refresh(tr); return; }
     el.value = k;
     refresh(tr);
@@ -180,34 +235,45 @@ rows.addEventListener("change", (e) => {
   });
 });
 
-rows.addEventListener("click", (e) => {
+main.addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
-  const i = +b.closest("tr").dataset.i, item = model[i];
+  if (b.classList.contains("sadd")) {
+    const si = b.closest("section").dataset.s, p = model[+si];
+    if (p) run(async () => {
+      p.s.push(blank());
+      build();
+      rowEl(si, p.s.length - 1).querySelector(".key").focus();
+    });
+    return;
+  }
+  const tr = b.closest("tr");
+  if (!tr || tr.dataset.i === undefined) return;
+  const list = listOf(tr), si = tr.dataset.s, i = +tr.dataset.i, item = list[i];
   if (!item) return;
-  if (b.classList.contains("up")) go(item, i - 1, ".up");
-  else if (b.classList.contains("dn")) go(item, i + 1, ".dn");
+  if (b.classList.contains("up")) go(list, si, item, i - 1, ".up");
+  else if (b.classList.contains("dn")) go(list, si, item, i + 1, ".dn");
   else if (b.classList.contains("rm")) run(async () => {
-    const at = model.indexOf(item);
+    const at = list.indexOf(item);
     if (at < 0) return;
-    model.splice(at, 1);
+    list.splice(at, 1);
     build();
     await persist();
-    const next = rows.children[Math.min(at, model.length - 1)];
+    const next = rowEl(si, Math.min(at, list.length - 1));
     (next ? next.querySelector(".rm") : $("add")).focus();
   });
 });
 
-rows.addEventListener("keydown", (e) => {
+main.addEventListener("keydown", (e) => {
   const el = e.target;
   if (e.key !== "Enter" || !el.classList.contains("pos")) return;
   e.preventDefault();
-  const i = +el.closest("tr").dataset.i, to = parseInt(el.value, 10);
-  if (!to) el.value = i + 1; else go(model[i], to - 1, ".pos");
+  const tr = el.closest("tr"), list = listOf(tr), i = +tr.dataset.i, to = parseInt(el.value, 10);
+  if (!to) el.value = i + 1; else go(list, tr.dataset.s, list[i], to - 1, ".pos");
 });
 
 $("add").addEventListener("click", () => run(async () => {
-  model.push({ k: "", u: "", t: "url" });
+  model.push(blank());
   build();
   rows.lastElementChild.querySelector(".key").focus();
 }));
@@ -275,6 +341,44 @@ $("restore-colors").addEventListener("click", () => run(() => {
   return updateSettings({ ...DEFAULTS });
 }));
 
+function applyPop(p) {
+  popKeys = { sel: p.sel || POP_DEFAULTS.sel, close: p.close || POP_DEFAULTS.close, pos: POP_POS.includes(p.pos) ? p.pos : POP_DEFAULTS.pos };
+  for (const inp of popInputs) inp.value = popKeys[inp.dataset.pop];
+}
+
+// Popup select/close use the same field syntax as the Shortcut column (several hotkeys, @ conditions).
+// Returns the normalized text or throws Error(message)
+function checkPopKey(which, v) {
+  const { text, entries } = parseField(v);
+  if (!entries.length) throw new Error("Popup keys cannot be empty.");
+  const otherName = which === "sel" ? "close" : "sel";
+  const other = parseField(popKeys[otherName], false).entries;
+  const seen = new Set();
+  for (const e of entries) {
+    if (seen.has(e.id)) throw new Error(`"${e.hk}" with the same conditions appears twice in this field.`);
+    seen.add(e.id);
+    if (other.some(x => x.id === e.id)) throw new Error(`${e.hk} with the same conditions is already used as the popup ${otherName === "sel" ? "select" : "close"} key.`);
+    const hit = model.find(r => r.t === "popup" && (r.s || []).some(x => parseField(x.k, false).entries.some(y => y.id === e.id)));
+    if (hit) throw new Error(`${e.hk} with the same conditions is already used by a shortcut in popup "${hit.u}".`);
+  }
+  return text;
+}
+
+for (const inp of popInputs) {
+  inp.addEventListener("change", () => run(async () => {
+    msg.textContent = "";
+    const which = inp.dataset.pop, v = inp.value.trim();
+    if (which === "pos") { popKeys = { ...popKeys, pos: v }; await persist(); return; }
+    let k;
+    try { k = checkPopKey(which, v); }
+    catch (err) { msg.textContent = err.message; inp.value = popKeys[which]; return; }
+    inp.value = k;
+    if (k === popKeys[which]) return;
+    popKeys = { ...popKeys, [which]: k };
+    await persist();
+  }));
+}
+
 // Collapsible panels: toggle the box and flip the arrow
 function togglePanel(btn, box) {
   const open = box.hidden;
@@ -287,7 +391,7 @@ extrasBtn.addEventListener("click", () => togglePanel(extrasBtn, extrasBox));
 
 // ---- Backup ----
 $("export").addEventListener("click", () => {
-  const data = { version: 1, optionsKey, rows: model.filter(r => r.k || r.u), settings };
+  const data = { version: 1, optionsKey, popKeys, rows: model.filter(r => r.k || r.u), settings };
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
   a.download = "ahk-receiver-backup.json";
@@ -305,23 +409,39 @@ $("file").addEventListener("change", (e) => {
     try {
       const d = JSON.parse(await file.text());
       const raw = Array.isArray(d.rows) ? d.rows : [];
+      let skipped = 0;
+      const names = new Set();
       // old backups kept conditions in r.c ("gks:F15, gf:X"); fold them into the shortcut field
-      const next = raw.map(r => {
+      const norm = (r, sub) => {
         const c = String(r?.c || "").split(",").map(x => x.trim()).filter(Boolean).join(" & ");
         const k = String(r?.k || "").trim();
-        return { k: c && k ? `${k} @ ${c}` : k, u: String(r?.u || "").trim(), t: r?.t === "code" ? "code" : "url" };
-      }).filter(r => r.k || r.u);
-      const ok = (r) => { try { r.k = parseField(r.k).text; return true; } catch { return false; } };
-      const skipped = next.filter(r => !ok(r)).length;
-      model = next.filter(ok);
+        const t = r?.t === "code" ? "code" : !sub && r?.t === "popup" ? "popup" : "url";
+        const o = { k: c && k ? `${k} @ ${c}` : k, u: String(r?.u || "").trim(), t };
+        if (t === "popup") o.s = (Array.isArray(r.s) ? r.s : []).map(x => norm(x, true)).filter(x => x.k || x.u);
+        return o;
+      };
+      const ok = (r) => {
+        try {
+          r.k = parseField(r.k).text;
+          if (r.t === "popup") {
+            if (/[\[\]\t]/.test(r.u) || names.has(r.u.toLowerCase())) throw 0;
+            names.add(r.u.toLowerCase());
+            r.s = r.s.filter(x => (ok(x) || (skipped++, false)));
+          }
+          return true;
+        } catch { return false; }
+      };
+      model = raw.map(r => norm(r, false)).filter(r => r.k || r.u).filter(r => ok(r) || (skipped++, false));
       if (typeof d.optionsKey === "string") {
         const k = d.optionsKey.trim();
         if (!k || !model.some(r => parseField(r.k, false).entries.some(x => x.hk.toLowerCase() === k.toLowerCase()))) { optionsKey = k; optionsKeyInput.value = k; }
       }
       if (d.settings) applySettings(mergeSettings(d.settings, settings));
+      const goodField = (s) => { try { const f = parseField(String(s || "")); return f.entries.length ? f.text : ""; } catch { return ""; } };   // invalid -> default
+      if (d.popKeys) applyPop({ sel: goodField(d.popKeys.sel), close: goodField(d.popKeys.close), pos: d.popKeys.pos });
       build();
       await persist();
-      if (skipped) msg.textContent = `${skipped} shortcut(s) in the backup had invalid shortcut/condition syntax and were skipped.`;
+      if (skipped) msg.textContent = `${skipped} shortcut(s) in the backup had invalid syntax (shortcut, conditions or popup name) and were skipped.`;
     } catch (err) {
       msg.textContent = `Import failed: ${err.message}`;
     }
