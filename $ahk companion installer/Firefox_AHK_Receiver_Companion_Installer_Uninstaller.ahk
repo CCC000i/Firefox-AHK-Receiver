@@ -7,6 +7,7 @@
 ; Hotkeys only fire while the owning Firefox process has the active window, so multiple profiles work.
 ; Type P rows open an AHK popup (own GUI, positioned at the page viewport's top left); main hotkeys pause while it is open.
 ; popup_select / popup_close take the same field syntax as list shortcuts (several hotkeys, @ conditions).
+; While a popup is open, 1 2 .. 0 - = open its entries 1..12 unless the key is assigned in that popup.
 ; A hotkey that handles a popup key stays armed until the key is released, so its key-up is swallowed too (no context menu on RButton).
 ; Protocol (4-byte length + UTF-8 JSON):
 ;   add-on -> helper: {"id":N,"cmd":"read"} | {"id":N,"cmd":"write","text":"<ini>"}
@@ -250,7 +251,27 @@ Apply(txt) {
         for r in list
             for it in r.items
                 binds.Push({k: it.k, c: it.c, n: n, h: HoldKey.Bind(oPick.Bind(r.u)), sys: ""})
-    ; popup select/close: same field syntax as list shortcuts; created disabled, switched on only while a popup is open
+    ; digit fallback: 1 2 .. 0 - = open popup entry 1..12 unless that key is assigned in the popup (or is a select/close key)
+    sysKeys := Map(), sysKeys.CaseSense := "Off"
+    for kind in ["sel", "close"] {
+        its := []
+        AddField(its, cfg.%kind%, "")
+        for it in its
+            sysKeys[PlainKey(it.k)] := true
+    }
+    for n, list in pops {
+        used := Map(), used.CaseSense := "Off"
+        for r in list
+            for it in r.items
+                used[PlainKey(it.k)] := true
+        for i, dk in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="] {
+            if i > list.Length
+                break
+            if !used.Has(dk) && !sysKeys.Has(dk)
+                binds.Push({k: dk, c: "", n: n, h: HoldKey.Bind(oPick.Bind(list[i].u)), sys: ""})
+        }
+    }
+    ; popup select/close: same field syntax as list shortcuts (several hotkeys, @ conditions)
     for kind in ["sel", "close"] {
         its := []
         AddField(its, cfg.%kind%, "")
@@ -309,6 +330,9 @@ AddField(items, field, u) {
 }
 
 Unesc(s) => RegExReplace(s, "\\([@&|_])", "$1")
+
+; Hotkey name without the ~ * $ prefixes (they don't change which key it is)
+PlainKey(k) => RegExReplace(k, "^[~*$]+")
 
 SplitRe(s, re) {
     r := [], pos := 1
