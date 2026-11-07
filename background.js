@@ -20,10 +20,18 @@ function connect() {
   });
 }
 
-function openUrl(u) {
+async function openUrl(u) {
   u = String(u || "").trim();
   if (!u) return;
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) u = "https://" + u;
+  try {
+    // Reuse the active tab if it is a blank/new tab page
+    const [t] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+    if (t && /^about:(newtab|home|blank)$/i.test(t.url || "")) {
+      await browser.tabs.update(t.id, { url: u });
+      return;
+    }
+  } catch (e) {}
   browser.tabs.create({ url: u, active: true }).catch(() => {});
 }
 

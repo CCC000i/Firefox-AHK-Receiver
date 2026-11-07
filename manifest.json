@@ -1,14 +1,14 @@
 {
   "manifest_version": 2,
   "name": "AHK Receiver",
-  "version": "4.0",
+  "version": "4.1",
   "browser_specific_settings": {
     "gecko": {
       "id": "ahkreceiver@ccc000i.addon",
       "data_collection_permissions": { "required": ["none"] }
     }
   },
-  "permissions": ["nativeMessaging"],
+  "permissions": ["nativeMessaging", "tabs"],
   "background": { "scripts": ["background.js"], "persistent": true },
   "options_ui": { "page": "options.html", "open_in_tab": true }
 }
